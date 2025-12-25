@@ -1,4 +1,4 @@
-# fitness_tracker
+# appfitness
 
 A new Flutter project.
 

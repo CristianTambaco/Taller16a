@@ -14,8 +14,9 @@ abstract class BiometricDataSource {
 class BiometricDataSourceImpl implements BiometricDataSource {
   /// MethodChannel: canal de comunicación Flutter ↔ Android
   /// El nombre debe ser exactamente igual en ambos lados
-  final MethodChannel _channel =
-      const MethodChannel(PlatformChannels.biometric);
+  final MethodChannel _channel = const MethodChannel(
+    PlatformChannels.biometric,
+  );
 
   @override
   Future<bool> canAuthenticate() async {
@@ -40,14 +41,12 @@ class BiometricDataSourceImpl implements BiometricDataSource {
 
       return AuthResult(
         success: result ?? false,
-        message:
-            result == true ? 'Autenticación exitosa' : 'Autenticación fallida',
+        message: result == true
+            ? 'Autenticación exitosa'
+            : 'Autenticación fallida',
       );
     } on PlatformException catch (e) {
-      return AuthResult(
-        success: false,
-        message: 'Error: ${e.message}',
-      );
+      return AuthResult(success: false, message: 'Error: ${e.message}');
     }
   }
 }

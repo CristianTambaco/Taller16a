@@ -53,14 +53,15 @@ class LoginPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 48),
+
                       if (state is AuthLoading)
                         const CircularProgressIndicator(color: Colors.white)
                       else
                         ElevatedButton.icon(
                           onPressed: () {
-                            context
-                                .read<AuthBloc>()
-                                .add(AuthenticateRequested());
+                            context.read<AuthBloc>().add(
+                              AuthenticateRequested(),
+                            );
                           },
                           icon: const Icon(Icons.fingerprint),
                           label: const Text('Autenticar con Huella'),

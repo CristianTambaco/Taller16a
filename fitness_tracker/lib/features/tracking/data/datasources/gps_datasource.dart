@@ -16,11 +16,13 @@ abstract class GpsDataSource {
 }
 
 class GpsDataSourceImpl implements GpsDataSource {
-  final MethodChannel _methodChannel =
-      const MethodChannel(PlatformChannels.gps);
+  final MethodChannel _methodChannel = const MethodChannel(
+    PlatformChannels.gps,
+  );
 
-  final EventChannel _eventChannel =
-      const EventChannel('${PlatformChannels.gps}/stream');
+  final EventChannel _eventChannel = const EventChannel(
+    '${PlatformChannels.gps}/stream',
+  );
 
   @override
   Future<LocationPoint?> getCurrentLocation() async {

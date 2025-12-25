@@ -39,7 +39,8 @@ class LocationPoint extends Equatable {
     final deltaLat = (other.latitude - latitude) * math.pi / 180;
     final deltaLon = (other.longitude - longitude) * math.pi / 180;
 
-    final a = math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+    final a =
+        math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
         math.cos(lat1Rad) *
             math.cos(lat2Rad) *
             math.sin(deltaLon / 2) *
@@ -60,11 +61,9 @@ class Route {
   final DateTime startTime;
   DateTime? endTime;
 
-  Route({
-    List<LocationPoint>? points,
-    DateTime? startTime,
-  })  : points = points ?? [],
-        startTime = startTime ?? DateTime.now();
+  Route({List<LocationPoint>? points, DateTime? startTime})
+    : points = points ?? [],
+      startTime = startTime ?? DateTime.now();
 
   void addPoint(LocationPoint point) {
     points.add(point);

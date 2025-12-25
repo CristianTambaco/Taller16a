@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import '../../data/datasources/accelerometer_datasource.dart';
-import '../../domain/entities/step_data.dart';
-import '../../../../core/platform/notification_datasource.dart';
+import '../../../auth/data/datasources/accelerometer_datasource.dart';
+import '../../../auth/data/datasources/notification_datasource.dart';
+import '../../../auth/domain/entities/step_data.dart';
 
 /// Widget que muestra el contador de pasos
 ///
 /// EXPLICACIÓN DIDÁCTICA:
 /// - Usa StreamSubscription para escuchar el EventChannel
 /// - Actualiza UI cada vez que llegan nuevos datos
-/// - Envía notificaciones al alcanzar metas
+/// - Detecta caídas y muestra alertas
 class StepCounterWidget extends StatefulWidget {
   const StepCounterWidget({super.key});
 
@@ -19,18 +19,16 @@ class StepCounterWidget extends StatefulWidget {
 
 class _StepCounterWidgetState extends State<StepCounterWidget> {
   final AccelerometerDataSource _dataSource = AccelerometerDataSourceImpl();
-  final NotificationDataSource _notificationDataSource =
-      NotificationDataSourceImpl();
+  final NotificationDataSource _notificationSource = NotificationDataSourceImpl();
 
   StreamSubscription<StepData>? _subscription;
   StepData? _currentData;
   bool _isTracking = false;
-  bool _goalNotificationSent = false; // Para evitar múltiples notificaciones
-
+  
   @override
   void initState() {
     super.initState();
-    _notificationDataSource.initialize();
+    _notificationSource.initialize();
   }
 
   @override
@@ -70,37 +68,16 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
         setState(() {
           _currentData = data;
         });
-
-        // 🚨 RETO 2: Detección de Caídas
-        if (data.fallDetected) {
-          _notificationDataSource.showFallNotification();
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('⚠️ ¡Caída Detectada!'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 5),
-              ),
-            );
-          }
+        
+        // DETECTAR CAÍDAS - Mostrar alerta visual
+        // Nota: La magnitud viene del acelerómetro, caída si > 25 m/s²
+        if (_currentData != null && _currentData!.magnitude > 25.0) {
+          _showFallAlert();
         }
-
-        // 🚨 RETO 1: Notificación cuando se alcancen 30 pasos
-        if (data.stepCount >= 30 && !_goalNotificationSent) {
-          _goalNotificationSent = true;
-          _notificationDataSource.showStepGoalNotification(data.stepCount);
-
-          // Mostrar mensaje en la app también
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('🎉 ¡Meta alcanzada! ${data.stepCount} pasos'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+        
+        // NOTIFICAR AL ALCANZAR META DE 30 PASOS
+        if (data.stepCount == 30) {
+          _notificationSource.showStepGoalNotification(data.stepCount);
         }
       },
       onError: (error) {
@@ -112,6 +89,33 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
       _isTracking = true;
     });
   }
+  
+  void _showFallAlert() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '⚠️ Caída detectada! Verifica tu seguridad',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      
+      // Enviar notificación
+      _notificationSource.showFallAlert();
+    }
+  }
 
   void _stopTracking() async {
     await _dataSource.stopCounting();
@@ -119,7 +123,6 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
 
     setState(() {
       _isTracking = false;
-      _goalNotificationSent = false; // Reset para permitir nueva notificación
     });
   }
 
@@ -162,8 +165,39 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
                 color: Color(0xFF6366F1),
               ),
             ),
-            const Text('pasos',
-                style: TextStyle(fontSize: 16, color: Colors.grey)),
+            const Text(
+              'pasos',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            
+            // Indicador de meta alcanzada
+            if ((_currentData?.stepCount ?? 0) >= 30)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.green, width: 2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.emoji_events, color: Colors.green, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        '¡Meta Alcanzada!',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
             const SizedBox(height: 16),
 
             // Indicadores
@@ -204,8 +238,10 @@ class _StepCounterWidgetState extends State<StepCounterWidget> {
         children: [
           Icon(icon, size: 20, color: color),
           const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );

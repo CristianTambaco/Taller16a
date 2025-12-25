@@ -52,7 +52,8 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
     _subscription = _dataSource.locationStream.listen(
       (point) {
         print(
-            '📍 GPS: ${point.latitude}, ${point.longitude}, acc=${point.accuracy}m');
+          '📍 GPS: ${point.latitude}, ${point.longitude}, acc=${point.accuracy}m',
+        );
 
         if (_route.points.isEmpty) {
           setState(() {
@@ -112,16 +113,19 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
                   children: [
                     const Text(
                       'Ruta GPS',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     ElevatedButton.icon(
                       onPressed: _toggleTracking,
                       icon: Icon(_isTracking ? Icons.stop : Icons.play_arrow),
                       label: Text(_isTracking ? 'Detener' : 'Iniciar'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            _isTracking ? Colors.red : Colors.green,
+                        backgroundColor: _isTracking
+                            ? Colors.red
+                            : Colors.green,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -202,8 +206,10 @@ class _RouteMapWidgetState extends State<RouteMapWidget> {
       children: [
         Icon(icon, color: const Color(0xFF6366F1)),
         const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
       ],
     );

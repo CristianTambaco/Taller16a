@@ -1,30 +1,30 @@
 package com.tuinstituto.fitness_tracker
 
-import android.os.Bundle
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import io.flutter.embedding.android.FlutterFragmentActivity
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.MethodChannel
-import java.util.concurrent.Executor
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import kotlin.math.sqrt
-import io.flutter.plugin.common.EventChannel
-import android.Manifest
-import android.content.pm.PackageManager
+import android.os.Build
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Bundle
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Intent
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executor
+import kotlin.math.sqrt
 
 /**
  * MainActivity: punto de entrada de la aplicación Android
@@ -33,18 +33,18 @@ import androidx.core.app.NotificationCompat
  */
 class MainActivity: FlutterFragmentActivity() {
 
-    // PASO 1: Definir nombre del canal (DEBE coincidir con Dart)
+    // Definir nombres de canales (DEBEN coincidir con Dart)
     private val BIOMETRIC_CHANNEL = "com.tuinstituto.fitness/biometric"
     private val ACCELEROMETER_CHANNEL = "com.tuinstituto.fitness/accelerometer"
     private val GPS_CHANNEL = "com.tuinstituto.fitness/gps"
-    private val NOTIFICATIONS_CHANNEL = "com.tuinstituto.fitness/notifications"
     private val LOCATION_PERMISSION_REQUEST_CODE = 1001
     
-    // Constantes para notificaciones
-    private val NOTIFICATION_CHANNEL_ID = "FITNESS_TRACKER_CHANNEL"
-    private val STEP_GOAL_NOTIFICATION_ID = 1001
+    // Notificaciones
+    private val CHANNEL_ID = "fitness_notifications"
+    private val STEP_GOAL_NOTIFICATION_ID = 1
+    private val FALL_NOTIFICATION_ID = 2
 
-    // PASO 2: Variables para biometría
+    // Variables para biometría
     private lateinit var executor: Executor
     private lateinit var biometricPrompt: BiometricPrompt
     private var pendingResult: MethodChannel.Result? = null
@@ -58,49 +58,35 @@ class MainActivity: FlutterFragmentActivity() {
 
         // Inicializar executor para biometría
         executor = ContextCompat.getMainExecutor(this)
+        
+        // Crear canal de notificaciones
+        createNotificationChannel()
 
         // CONFIGURAR PLATFORM CHANNEL - BIOMETRÍA
-
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             BIOMETRIC_CHANNEL
         ).setMethodCallHandler { call, result ->
-            /**
-             * setMethodCallHandler: escucha llamadas desde Flutter
-             *
-             * Parámetros:
-             * - call: contiene el nombre del método y argumentos
-             * - result: objeto para enviar respuesta a Flutter
-             */
-
             when (call.method) {
                 "checkBiometricSupport" -> {
-                    // Flutter llamó a checkBiometricSupport()
                     val canAuth = checkBiometricSupport()
-                    result.success(canAuth)  // Enviamos respuesta
+                    result.success(canAuth)
                 }
 
                 "authenticate" -> {
-                    // Guardamos result para responder después (async)
                     pendingResult = result
                     showBiometricPrompt()
                 }
 
                 else -> {
-                    // Método no reconocido
                     result.notImplemented()
                 }
             }
         }
 
-        // Configurar canal de acelerómetro
+        // Configurar canales adicionales
         setupAccelerometerChannel(flutterEngine)
-        
-        // Configurar canal GPS
         setupGpsChannel(flutterEngine)
-        
-        // Configurar canal de notificaciones
-        setupNotificationChannel(flutterEngine)
     }
 
     /**
@@ -121,7 +107,6 @@ class MainActivity: FlutterFragmentActivity() {
      * Mostrar diálogo de autenticación biométrica
      */
     private fun showBiometricPrompt() {
-        // Configurar información del diálogo
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Autenticación Biométrica")
             .setSubtitle("Usa tu huella dactilar")
@@ -130,7 +115,6 @@ class MainActivity: FlutterFragmentActivity() {
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
 
-        // Crear BiometricPrompt con callbacks
         biometricPrompt = BiometricPrompt(this, executor,
             object : BiometricPrompt.AuthenticationCallback() {
 
@@ -160,7 +144,6 @@ class MainActivity: FlutterFragmentActivity() {
             }
         )
 
-        // Mostrar el diálogo
         biometricPrompt.authenticate(promptInfo)
     }
 
@@ -173,24 +156,25 @@ class MainActivity: FlutterFragmentActivity() {
      *   2. onCancel: cuando Flutter deja de escuchar
      */
     private fun setupAccelerometerChannel(flutterEngine: FlutterEngine) {
-        val sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         var stepCount = 0
         var lastMagnitude = 0.0
         var sensorEventListener: SensorEventListener? = null
+        var goalNotificationSent = false
 
         // Variables para suavizado
         val magnitudeHistory = mutableListOf<Double>()
         val historySize = 10
         var sampleCount = 0
-        var batchFallDetected = false // Para detectar picos entre muestras
         var lastActivityType = "stationary"
         var activityConfidence = 0
+        
+        // Variables para detección de caídas
+        var lastFallDetectionTime = 0L
 
-        // ═══════════════════════════════════════════════════════════
         // CONFIGURAR EVENT CHANNEL
-        // ═══════════════════════════════════════════════════════════
         EventChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             ACCELEROMETER_CHANNEL
@@ -218,16 +202,33 @@ class MainActivity: FlutterFragmentActivity() {
                             }
                             val avgMagnitude = magnitudeHistory.average()
 
-                            // Detectar paso (Umbral reducido a 11.0 para mayor sensibilidad)
-                            if (magnitude > 11.0 && lastMagnitude <= 11.0) {
+                            // DETECCIÓN DE CAÍDAS - Pico de aceleración > 25 m/s²
+                            val currentTime = System.currentTimeMillis()
+                            if (magnitude > 25.0 && (currentTime - lastFallDetectionTime) > 5000) {
+                                // Detectar caída y enviar alerta
+                                lastFallDetectionTime = currentTime
+                                sendFallAlert()
+                                
+                                // Enviar evento especial a Flutter
+                                val fallData = mapOf(
+                                    "type" to "fall_detected",
+                                    "magnitude" to magnitude,
+                                    "timestamp" to currentTime
+                                )
+                                events?.success(fallData)
+                            }
+                            
+                            // Detectar paso
+                            if (magnitude > 12 && lastMagnitude <= 12) {
                                 stepCount++
+                                
+                                // NOTIFICACIÓN AL ALCANZAR 30 PASOS
+                                if (stepCount >= 30 && !goalNotificationSent) {
+                                    sendStepGoalNotification(stepCount)
+                                    goalNotificationSent = true
+                                }
                             }
                             lastMagnitude = magnitude
-
-                            // Acumular detección de caída (pico > 25 m/s²)
-                            if (magnitude > 25.0) {
-                                batchFallDetected = true
-                            }
 
                             // Determinar actividad (con promedio)
                             val newActivityType = when {
@@ -259,15 +260,11 @@ class MainActivity: FlutterFragmentActivity() {
                                 val data = mapOf(
                                     "stepCount" to stepCount,
                                     "activityType" to finalActivityType,
-                                    "magnitude" to avgMagnitude,
-                                    "fallDetected" to batchFallDetected
+                                    "magnitude" to avgMagnitude
                                 )
 
                                 // events?.success: envía datos al stream
                                 events?.success(data)
-
-                                // Resetear flag
-                                batchFallDetected = false
                             }
                         }
                     }
@@ -303,6 +300,7 @@ class MainActivity: FlutterFragmentActivity() {
             when (call.method) {
                 "start" -> {
                     stepCount = 0
+                    goalNotificationSent = false
                     result.success(null)
                 }
                 "stop" -> {
@@ -310,6 +308,7 @@ class MainActivity: FlutterFragmentActivity() {
                 }
                 "reset" -> {
                     stepCount = 0
+                    goalNotificationSent = false
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -317,13 +316,14 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * Configurar canales de GPS
+     */
     private fun setupGpsChannel(flutterEngine: FlutterEngine) {
-        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         var locationListener: LocationListener? = null
 
-        // ═══════════════════════════════════════════════════════════
         // METHOD CHANNEL - Operaciones puntuales
-        // ═══════════════════════════════════════════════════════════
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             GPS_CHANNEL
@@ -379,9 +379,7 @@ class MainActivity: FlutterFragmentActivity() {
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
         // EVENT CHANNEL - Stream de ubicaciones
-        // ═══════════════════════════════════════════════════════════
         EventChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "$GPS_CHANNEL/stream"
@@ -405,24 +403,13 @@ class MainActivity: FlutterFragmentActivity() {
                 }
 
                 try {
-                    // Solicitar actualizaciones (GPS y Red para mejor detección)
+                    // Solicitar actualizaciones
                     locationManager.requestLocationUpdates(
                         LocationManager.GPS_PROVIDER,
                         1000L,      // cada 1 segundo
                         0f,         // cualquier distancia
                         locationListener!!
                     )
-                    // Agregar proveedor de red para mejorar detección en interiores
-                    try {
-                        locationManager.requestLocationUpdates(
-                            LocationManager.NETWORK_PROVIDER,
-                            1000L,
-                            0f,
-                            locationListener!!
-                        )
-                    } catch (ex: Exception) {
-                        // Ignorar si el proveedor de red no está disponible
-                    }
                 } catch (e: SecurityException) {
                     events?.error("SECURITY_ERROR", e.message, null)
                 }
@@ -454,85 +441,53 @@ class MainActivity: FlutterFragmentActivity() {
             "timestamp" to location.time
         )
     }
-
-    /**
-     * Configurar Platform Channel para notificaciones
-     */
-    private fun setupNotificationChannel(flutterEngine: FlutterEngine) {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            NOTIFICATIONS_CHANNEL
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "initialize" -> {
-                    createNotificationChannel(notificationManager)
-                    result.success(null)
-                }
-
-                "showStepGoalNotification" -> {
-                    val stepCount = call.argument<Int>("stepCount") ?: 0
-                    val title = call.argument<String>("title") ?: "Meta Alcanzada"
-                    val body = call.argument<String>("body") ?: "¡Felicitaciones!"
-
-                    showStepGoalNotification(notificationManager, stepCount, title, body)
-                    result.success(null)
-                }
-
-                else -> result.notImplemented()
-            }
-        }
-    }
-
+    
     /**
      * Crear canal de notificaciones (necesario para Android 8.0+)
      */
-    private fun createNotificationChannel(notificationManager: NotificationManager) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "Fitness Tracker Notifications",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Notificaciones de metas de pasos"
-                enableVibration(true)
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Fitness Notifications"
+            val descriptionText = "Notificaciones de metas de pasos y alertas"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
             }
+            
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
     }
-
+    
     /**
-     * Mostrar notificación de meta de pasos alcanzada
+     * Enviar notificación al alcanzar la meta de pasos
      */
-    private fun showStepGoalNotification(
-        notificationManager: NotificationManager,
-        stepCount: Int,
-        title: String,
-        body: String
-    ) {
-        // Intent para abrir la app cuando se toque la notificación
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Ícono simple
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("¡Excelente progreso! Has alcanzado $stepCount pasos. ¡Sigue así!"))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true) // Se cierra automáticamente al tocar
-            .setVibrate(longArrayOf(0, 300, 200, 300)) // Patrón de vibración
-            .build()
-
-        notificationManager.notify(STEP_GOAL_NOTIFICATION_ID, notification)
+    private fun sendStepGoalNotification(steps: Int) {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("¡Meta Alcanzada! 🎉")
+            .setContentText("Has completado $steps pasos. ¡Sigue así!")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+        
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(STEP_GOAL_NOTIFICATION_ID, builder.build())
+    }
+    
+    /**
+     * Enviar alerta de caída detectada
+     */
+    private fun sendFallAlert() {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("⚠️ Caída Detectada")
+            .setContentText("Se ha detectado una posible caída. ¿Estás bien?")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 500, 200, 500))
+        
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(FALL_NOTIFICATION_ID, builder.build())
     }
 }

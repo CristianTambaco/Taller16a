@@ -18,9 +18,7 @@ abstract class AuthState extends Equatable {
 }
 
 class AuthInitial extends AuthState {}
-
 class AuthLoading extends AuthState {}
-
 class AuthSuccess extends AuthState {
   final AuthResult result;
   AuthSuccess(this.result);
@@ -28,7 +26,6 @@ class AuthSuccess extends AuthState {
   @override
   List<Object> get props => [result];
 }
-
 class AuthFailure extends AuthState {
   final String message;
   AuthFailure(this.message);
